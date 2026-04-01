@@ -1,0 +1,39 @@
+name: AIContentModeration
+version: 1.0.0
+description: "A production-grade content moderation simulation for Meta-scale challenges."
+author: "Antigravity"
+tags: ["moderation", "safety", "safety-engine", "openenv"]
+
+environment:
+  class: env.ContentModerationEnv
+  models:
+    observation: models.Observation
+    action: models.Action
+    reward: models.Reward
+    state: models.State
+
+tasks:
+  - id: easy_moderation
+    name: "Easy Content Moderation"
+    difficulty: EASY
+    max_steps: 5
+    description: "Handle obvious violations like spam and explicit hate speech."
+  
+  - id: medium_moderation
+    name: "Medium Content Moderation"
+    difficulty: MEDIUM
+    max_steps: 10
+    description: "Handle borderline cases, sarcasm, and context-dependent flags."
+  
+  - id: hard_moderation
+    name: "Hard Content Moderation"
+    difficulty: HARD
+    max_steps: 15
+    description: "Reason through coordinated adversarial attempts and multi-step misinformation."
+
+dependencies:
+  python: ">=3.9"
+  pip:
+    - pydantic>=2.0.0
+    - openai>=1.0.0
+    - pyyaml
