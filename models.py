@@ -14,6 +14,7 @@ class UserHistory(BaseModel):
     violations_count: int = 0
     trust_score: float = 1.0  # 0.0 to 1.0
     previous_actions: List[ModerationAction] = []
+    history: List[Dict[str, Any]] = [] # Detailed history of past content and decisions
 
 class PostContext(BaseModel):
     thread_id: str
@@ -31,6 +32,8 @@ class Observation(BaseModel):
     user_history: UserHistory
     context: PostContext
     policy_rules: List[PolicyRule]
+    platform_risk_score: float = 0.0 # Context for the agent
+    policy_version: str = "1.0" # Current policy regime
 
 class Action(BaseModel):
     decision: ModerationAction
@@ -53,3 +56,5 @@ class State(BaseModel):
     ground_truth: Dict[str, GroundTruth] = {}
     current_step: int = 0
     total_steps: int = 0
+    platform_risk_score: float = 0.0
+    policy_version: str = "1.0"

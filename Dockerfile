@@ -11,7 +11,7 @@ COPY . .
 
 # Set environment variables (for Docker execution)
 ENV GEMINI_API_KEY=""
-ENV MODEL_NAME="gemini-1.5-flash"
+ENV MODEL_NAME="gemini-2.5-flash"
 
 # Run the inference script by default
 CMD ["python", "inference.py"]
