@@ -6,6 +6,9 @@ import google.generativeai as genai
 from env import ContentModerationEnv
 from tasks import TASKS
 from models import Action, ModerationAction
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Configure Gemini API
 api_key = os.getenv("GEMINI_API_KEY", "your-api-key")
