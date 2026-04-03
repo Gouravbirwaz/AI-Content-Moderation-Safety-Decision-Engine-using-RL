@@ -1,7 +1,7 @@
 import os
 import random
 from typing import List, Dict, Any, Tuple
-from models import Observation, UserHistory, PostContext, PolicyRule, GroundTruth
+from env.models import Observation, UserHistory, PostContext, PolicyRule, GroundTruth
 
 class ContextSynthesizer:
     """Synthesizes realistic, placeholder-free content by combining entities and templates."""
@@ -67,7 +67,7 @@ class DataEngine:
                 result_words.append(word)
         return " ".join(result_words)
 
-    def generate_scenario(self, difficulty: str = "EASY") -> Tuple[Observation, GroundTruth]:
+    def generate_scenario(self, difficulty: str = "EASY", has_images: bool = True) -> Tuple[Observation, GroundTruth]:
         category = self.rng.choice(["Hate Speech", "Harassment", "Self-Harm", "Scam/Fraud", "Misinformation", "Safe"])
         user_id = f"user_{self.rng.randint(1000, 9999)}"
         user_history = self._get_user(user_id)
@@ -79,7 +79,7 @@ class DataEngine:
         image_path = None
         has_visual_violation = False
         
-        if difficulty != "EASY" or self.rng.random() < 0.3:
+        if has_images and (difficulty != "EASY" or self.rng.random() < 0.3):
             image_path, visual_violation = self._get_visual_content(category, difficulty, is_violation)
             has_visual_violation = visual_violation
             if visual_violation:
@@ -107,7 +107,7 @@ class DataEngine:
             policy_rules=self.policy_rules
         ), gt
 
-    def generate_sequential_scenarios(self, steps: int) -> List[Tuple[Observation, GroundTruth]]:
+    def generate_sequential_scenarios(self, steps: int, has_images: bool = True) -> List[Tuple[Observation, GroundTruth]]:
         scenarios = []
         user_id = f"user_seq_{self.rng.randint(1000, 9999)}"
         user_history = self._get_user(user_id)
@@ -138,7 +138,7 @@ class DataEngine:
             obs = Observation(
                 post_id=post_id,
                 content=text,
-                image=image_path,
+                image=image_path if has_images else None,
                 user_history=user_history,
                 context=PostContext(thread_id="thread_seq_1"),
                 policy_rules=self.policy_rules

@@ -1,66 +1,80 @@
-# AI Content Moderation & Safety Decision Engine
+# AI Multimodal Content Moderation & Safety Decision Engine
 
-A production-grade **OpenEnv** environment designed to simulate Meta-scale content moderation challenges. This environment models the complex decision-making processes required for maintaining platform safety across Hate Speech, Harassment, Misinformation, and more.
+[![OpenEnv](https://img.shields.io/badge/OpenEnv-Compatible-green.svg)](https://github.com/meta-research/openenv)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/release/python-390/)
 
-## Problem Motivation
+## 1. Introduction & Summary
+The **AI Multimodal Content Moderation Engine** is a state-of-the-art safety simulation designed for Meta-scale challenges. Built on the **Meta OpenEnv** framework, it provides a realistic, high-stakes environment for training and evaluating safety agents. The engine specifically addresses the "Safety Decision" theme of the Meta-PyTorch Hackathon by integrating complex text-image reasoning, dynamic platform risk management, and adversarial evasion detection.
 
-At Meta-scale, content moderation is not just about keyword matching; it's about understanding context, intent, and user patterns. Agents must make high-stakes decisions under uncertainty, balancing safety risks against user expression. This environment provides a realistic simulation of these challenges, requiring agents to reason over:
-- **Category-specific policies**: Hate Speech, Harassment, Self-Harm, Scam/Fraud, Misinformation.
-- **Evolving User Trust**: Decisions affect user behavior and future visibility.
-- **Adversarial Evasion**: Users modifying language (leetspeak, obfuscation) to bypass detection.
-- **Contextual Nuance**: Sarcasm, hyperbole, and thread-level context.
+## 2. Problem Statement
+Modern social platforms face sophisticated safety threats where malicious content is often hidden across multiple modalities. A common "Mismatched Signal" attack involves pairing a seemingly safe text description with a policy-violating image (memes, obfuscated symbols). traditional moderation systems often fail these cases due to:
+- **Lack of Cross-Modal Reasoning**: Analyzing text and images in isolation.
+- **Static Policy Failure**: Inability to adapt when platform risk spikes or policies shift.
+- **Adversarial Evasion**: Users using leetspeak or visual obfuscation to bypass filters.
 
-## Environment Design
+## 3. Proposed Solution
+Our engine uses **Reinforcement Learning (RL)** principles and **Large Multimodal Models (LMMs)** to create a holistic safety gate. By modeling moderation as an OpenEnv session, we allow agents to:
+- **Analyze Joint Embeddings**: Evaluate the interaction between text and visual signals.
+- **Track User Trust**: Maintain persistent historical context to identify repeat offenders.
+- **Manage Systemic Risk**: Dynamically adjust moderation strictness based on the platform's global risk score.
 
-### Action Space
-- `ALLOW`: The content is safe and compliant.
-- `REMOVE`: The content violates platform policy.
-- `FLAG_FOR_REVIEW`: Borderline or ambiguous cases requiring human-in-the-loop.
-- `WARN_USER`: Inform the user of a minor violation.
-- `SHADOW_BAN`: Limit the user's reach for severe or repetitive violations.
+## 4. Key Features
+- 🛡️ **Cross-Modal Reasoning**: Detects violations where the threat exists only in the interplay of text and image.
+- 📈 **Multi-Dimensional Grading**: Scores agents on Precision, Recall, Visual Recall, and Risk Mitigation.
+- 🔄 **Dynamic Policy Shifts**: Simulates real-world "breaking news" or "election" scenarios where safety thresholds change mid-session.
+- 🕵️ **Adversarial Data Engine**: Generates synthetic content including leetspeak, obfuscated text, and deceptive visual memes.
 
-### Observation Space
-- `post_id`: Unique identifier for the content.
-- `content`: The text content of the post (may include adversarial obfuscation).
-- `user_history`: User's previous violations and current trust score.
-- `context`: Thread information and related post links.
-- `policy_rules`: Relevant policy definitions for the current session.
+## 5. Tech Stack
+- **Framework**: [Meta OpenEnv](https://github.com/meta-research/openenv)
+- **Deep Learning**: PyTorch
+- **Multimodal AI**: Gemini 2.5 Flash (Large Multimodal Model)
+- **Data Modeling**: Pydantic v2
+- **Environment**: Gymnasium-compliant API
 
-### Reward Function
-- Correct `REMOVE`: **+1.0**
-- Correct `ALLOW`: **+0.8**
-- `FLAG_FOR_REVIEW` when uncertain: **+0.5**
-- False Positive (Safe content removed): **-0.7**
-- False Negative (Dangerous content allowed): **-1.0**
-- Contextual Bonus: **+0.1** for leveraging history/context in reasoning.
+## 6. Project Structure
+The project follows the standardized OpenEnv/Hackathon directory pattern:
+```text
+.
+├── agents/             # Inference clients and Decision Models
+│   └── inference.py    # Main evaluation entry point
+├── env/                # Core Environment Implementation
+│   ├── env.py          # Observation/Action/Reward logic
+│   └── models.py       # Pydantic data schemas
+├── tasks/              # Scenario Definitions
+│   └── tasks.py        # Task configurations and Grader logic
+├── data_engine/        # Content Generation
+│   └── data_engine.py  # Synthetic Adversarial Generator
+├── assets/             # (Ignored) Dynamically generated visual assets
+├── openenv.yaml        # OpenEnv Environment Manifest
+└── Dockerfile          # Containerized deployment
+```
 
-## Tasks
+## 7. How to Run
 
-1. **EASY**: Clear-cut cases of spam or explicit hate speech. High signal, low ambiguity.
-2. **MEDIUM**: Focuses on sarcasm, borderline harassment, and context-dependent content.
-3. **HARD**: Coordinated misinformation campaigns and adversarial evasion (leetspeak). Requires multi-step reasoning.
-
-## Setup & Usage
-
-### Local Development
+### Installation
 ```bash
 pip install -r requirements.txt
-export GEMINI_API_KEY="your-key"
-python inference.py
 ```
 
-### Docker
+### Setup API Keys
+Create a `.env` file or export your keys:
 ```bash
-docker build -t moderation-env .
-docker run -e GEMINI_API_KEY="your-key" moderation-env
+export GEMINI_API_KEY="your_api_key_here"
 ```
 
-## Baseline Results (Dummy Logic)
-- **Easy**: 0.80
-- **Medium**: 0.70
-- **Hard**: 0.20
+### Run Evaluation
+Execute the inference client to test the engine across all defined safety tasks:
+```bash
+python -m agents.inference
+```
 
-*Note: High scores in HARD mode require a reasoning-capable model.*
+## 8. Grading & Evaluation
+The engine uses a **Multi-Dimensional Grader** to provide a holistic safety score:
+- **Safety Recall (40%)**: Ability to catch all policy violations.
+- **Visual Accuracy (20%)**: Specifically rewards catching visual-only threats.
+- **Risk Mitigation (25%)**: Measures how effectively the agent lowers the platform risk score.
+- **Policy Alignment (15%)**: Strictness during high-risk scenarios.
 
-## Deployment
-This environment is OpenEnv compliant and can be validated using `openenv validate`. It is ready for deployment to **Hugging Face Spaces** with the `openenv` tag.
+---
+*Developed for the Meta-PyTorch Hackathon in partnership with Scaler School of Technology.*

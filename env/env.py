@@ -1,12 +1,13 @@
 from typing import Tuple, Dict, Any, List
-from models import Observation, Action, Reward, State, ModerationAction, GroundTruth, UserHistory
-from data_engine import DataEngine
+from env.models import Observation, Action, Reward, State, ModerationAction, GroundTruth, UserHistory
+from data_engine.data_engine import DataEngine
 
 class ContentModerationEnv:
-    def __init__(self, difficulty: str = "EASY", max_steps: int = 10, seed: int = 42, is_sequential: bool = False):
+    def __init__(self, difficulty: str = "EASY", max_steps: int = 10, seed: int = 42, is_sequential: bool = False, has_images: bool = True):
         self.difficulty = difficulty
         self.max_steps = max_steps
         self.is_sequential = is_sequential
+        self.has_images = has_images
         self.data_engine = DataEngine(seed=seed)
         self.state_data = State(total_steps=max_steps, platform_risk_score=0.0, policy_version="1.0")
         self._initialize_queue()
@@ -16,7 +17,7 @@ class ContentModerationEnv:
         self.state_data.ground_truth = {}
         
         if self.is_sequential:
-            scenarios = self.data_engine.generate_sequential_scenarios(self.max_steps)
+            scenarios = self.data_engine.generate_sequential_scenarios(self.max_steps, has_images=self.has_images)
             for obs, gt in scenarios:
                 obs.platform_risk_score = self.state_data.platform_risk_score
                 obs.policy_version = self.state_data.policy_version
@@ -24,7 +25,7 @@ class ContentModerationEnv:
                 self.state_data.ground_truth[obs.post_id] = gt
         else:
             for _ in range(self.max_steps):
-                obs, gt = self.data_engine.generate_scenario(self.difficulty)
+                obs, gt = self.data_engine.generate_scenario(self.difficulty, has_images=self.has_images)
                 obs.platform_risk_score = self.state_data.platform_risk_score
                 obs.policy_version = self.state_data.policy_version
                 self.state_data.moderation_queue.append(obs)

@@ -5,9 +5,9 @@ import logging
 import PIL.Image
 from typing import List, Dict, Optional, Any
 import google.generativeai as genai
-from env import ContentModerationEnv
-from tasks import TASKS
-from models import Action, ModerationAction, Observation
+from env.env import ContentModerationEnv
+from tasks.tasks import TASKS
+from env.models import Action, ModerationAction, Observation
 from dotenv import load_dotenv
 
 # Configure industry-standard logging
@@ -95,7 +95,8 @@ async def run_simulation_task(task_def, client: ModerationClient):
     env = ContentModerationEnv(
         difficulty=task_def.difficulty, 
         max_steps=task_def.max_steps, 
-        is_sequential=task_def.is_sequential
+        is_sequential=task_def.is_sequential,
+        has_images=task_def.has_images
     )
     obs = env.reset()
     done = False

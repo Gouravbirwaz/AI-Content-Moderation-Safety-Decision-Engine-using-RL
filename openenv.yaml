@@ -1,35 +1,29 @@
 name: AIContentModeration
-version: 1.0.0
+version: 1.1.0
 description: "A production-grade content moderation simulation for Meta-scale challenges."
 author: "Antigravity"
-tags: ["moderation", "safety", "safety-engine", "openenv"]
+tags: ["moderation", "safety", "safety-engine", "openenv", "multimodal", "pytorch-hackathon"]
 
 environment:
-  class: env.ContentModerationEnv
+  class: env.env.ContentModerationEnv
   models:
-    observation: models.Observation
-    action: models.Action
-    reward: models.Reward
-    state: models.State
+    observation: env.models.Observation
+    action: env.models.Action
+    reward: env.models.Reward
+    state: env.models.State
 
 tasks:
-  - id: easy_moderation
-    name: "Easy Content Moderation"
-    difficulty: EASY
-    max_steps: 5
-    description: "Handle obvious violations like spam and explicit hate speech."
-  
-  - id: medium_moderation
-    name: "Medium Content Moderation"
-    difficulty: MEDIUM
-    max_steps: 10
-    description: "Handle borderline cases, sarcasm, and context-dependent flags."
-  
-  - id: hard_moderation
-    name: "Hard Content Moderation"
+  - id: multimodal_hard
+    name: "Multimodal Adversarial Challenge"
     difficulty: HARD
+    max_steps: 10
+    description: "Detect safety violations in images paired with safe-looking text."
+  
+  - id: policy_drift
+    name: "Dynamic Policy Adaptation"
+    difficulty: MEDIUM
     max_steps: 15
-    description: "Reason through coordinated adversarial attempts and multi-step misinformation."
+    description: "Handle evolving safety guidelines and shifting platform risk."
 
 dependencies:
   python: ">=3.9"
