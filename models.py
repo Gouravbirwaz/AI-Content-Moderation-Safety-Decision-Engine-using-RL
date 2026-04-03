@@ -29,6 +29,7 @@ class PolicyRule(BaseModel):
 class Observation(BaseModel):
     post_id: str
     content: str
+    image: Optional[str] = None # Absolute path to an actual image file
     user_history: UserHistory
     context: PostContext
     policy_rules: List[PolicyRule]
@@ -48,6 +49,7 @@ class GroundTruth(BaseModel):
     label: str  # One of: Hate Speech, Harassment, Self-Harm, Scam/Fraud, Misinformation, Safe
     is_violation: bool
     explanation: str
+    has_visual_violation: bool = False # Specific visual flag for multimodal grading
 
 class State(BaseModel):
     moderation_queue: List[Observation] = []

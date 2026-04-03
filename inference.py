@@ -2,7 +2,8 @@ import os
 import json
 import asyncio
 import logging
-from typing import List, Dict, Optional
+import PIL.Image
+from typing import List, Dict, Optional, Any
 import google.generativeai as genai
 from env import ContentModerationEnv
 from tasks import TASKS
@@ -19,33 +20,33 @@ logger = logging.getLogger("ModerationInference")
 load_dotenv()
 
 class ModerationClient:
-    """Production-grade client for interacting with AI Moderation services."""
+    """Production-grade client for interacting with AI Multimodal Moderation services."""
     
     def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash"):
         if not api_key or api_key == "your-api-key":
-            raise EnvironmentError("GEMINI_API_KEY is not set or invalid. Industry-grade operation requires a valid API key.")
+            raise EnvironmentError("GEMINI_API_KEY is not set or invalid.")
         
         self.api_key = api_key
         self.model_name = model_name
         genai.configure(api_key=self.api_key)
         
-        self.system_prompt = """You are a senior AI Content Moderation Architect. Your goal is to minimize long-term platform risk while maintaining policy accuracy.
+        self.system_prompt = """You are a senior AI Multimodal Moderation Architect. Your goal is to minimize platform risk by analyzing BOTH text and images.
 
-CONTEXTUAL REASONING REQUIREMENTS:
-1. USER HISTORY: Review past violations and trust scores. Escalate actions (e.g., REMOVE to SHADOW_BAN) for repeat offenders.
-2. PLATFORM RISK: Observe the global platform_risk_score. If risk is high (>1.0), adopt a more conservative 'Safety First' posture.
-3. POLICY VERSION: Adhere strictly to the active policy version (e.g., standard vs strict).
-4. STRUCTURED REASONING: Your 'reasoning' field must explicitly mention which history or risk factors influenced your decision.
+REASONING REQUIREMENTS:
+1. CROSS-MODAL ANALYSIS: Combine signals from text and images. Look for hidden threats (e.g. hate symbols in posters, safe text hiding malicious imagery).
+2. USER HISTORY: Review past violations. Escalate actions for repeat offenders.
+3. PLATFORM RISK: If risk is high, adopt a 'Safety First' posture.
+4. POLICY ADHERENCE: Strictly follow policy categories (Hate Speech, Harassment, etc.).
 
 Available Actions:
 - ALLOW: Safe content.
-- REMOVE: Clear policy violation.
-- FLAG_FOR_REVIEW: Ambiguous or borderline cases requiring human-in-the-loop.
-- WARN_USER: Educational warnings for minor or first-time infractions.
-- SHADOW_BAN: Persistent adversarial behavior or severe safety risks.
+- REMOVE: Clear policy violation (text or visual).
+- FLAG_FOR_REVIEW: Ambiguous cases.
+- WARN_USER: Minor infractions.
+- SHADOW_BAN: Severe or persistent risks.
 
-RESPONSE FORMAT:
-You must return a valid JSON object matching the Schema.
+Your 'reasoning' field MUST explicitly mention BOTH text and visual components if both are present.
+RESPONSE FORMAT: Valid JSON matching the Action schema.
 """
         self.model = genai.GenerativeModel(
             model_name=self.model_name,
@@ -54,9 +55,9 @@ You must return a valid JSON object matching the Schema.
         )
 
     async def get_decision(self, obs: Observation) -> Action:
-        """Fetch a moderation decision using the AI model with strict context injection."""
+        """Fetch a multimodal moderation decision using text and (optional) image inputs."""
         prompt_data = {
-            "content": obs.content,
+            "text_content": obs.content,
             "platform_context": {
                 "risk_score": obs.platform_risk_score,
                 "policy_version": obs.policy_version
@@ -64,22 +65,28 @@ You must return a valid JSON object matching the Schema.
             "user_context": {
                 "user_id": obs.user_history.user_id,
                 "trust_score": obs.user_history.trust_score,
-                "violation_count": obs.user_history.violations_count,
-                "history_summary": obs.user_history.history[-5:] # Last 5 events for depth
+                "violation_count": obs.user_history.violations_count
             },
             "applicable_rules": [r.model_dump() for r in obs.policy_rules]
         }
         
+        content_parts = [json.dumps(prompt_data, indent=2)]
+        
+        if obs.image and os.path.exists(obs.image):
+            try:
+                img = PIL.Image.open(obs.image)
+                content_parts.append(img)
+                logger.info(f"Loaded image asset for analysis: {os.path.basename(obs.image)}")
+            except Exception as e:
+                logger.warning(f"Failed to load image at {obs.image}: {e}. Falling back to text-only.")
+
         try:
-            # We use a wrapper to handle potential sync blockage in async loop if necessary, 
-            # though generate_content is usually fine here for simple scripts.
-            response = self.model.generate_content(json.dumps(prompt_data, indent=2))
+            # Multi-part content generation (text + optional image)
+            response = self.model.generate_content(content_parts)
             decision_json = json.loads(response.text)
             return Action(**decision_json)
         except Exception as e:
             logger.error(f"Moderation API failure: {str(e)}")
-            # In industry systems, we fail fast rather than using dummy logic 
-            # to prevent silent degradation of safety standards.
             raise RuntimeError("Moderation service unavailable. Cannot proceed safely.")
 
 async def run_simulation_task(task_def, client: ModerationClient):
@@ -98,6 +105,8 @@ async def run_simulation_task(task_def, client: ModerationClient):
     
     while not done:
         logger.info(f"Processing Step {len(actions)+1} | PostID: {obs.post_id}")
+        if obs.image:
+             logger.info(f"Visual Modal Attached: {os.path.basename(obs.image)}")
         
         try:
             action = await client.get_decision(obs)
@@ -118,7 +127,7 @@ async def run_simulation_task(task_def, client: ModerationClient):
 
 async def main():
     api_key = os.getenv("GEMINI_API_KEY")
-    model_name = os.getenv("MODEL_NAME", "gemini-2.0-flash")
+    model_name = os.getenv("MODEL_NAME", "")
     
     try:
         client = ModerationClient(api_key, model_name)
@@ -132,7 +141,7 @@ async def main():
         results[task.name] = metrics
     
     print("\n" + "="*60)
-    print("PRODUCTION MODERATION ENGINE - FINAL PERFORMANCE REPORT")
+    print("MULTIMODAL MODERATION ENGINE - FINAL PERFORMANCE REPORT")
     print("="*60)
     for name, metrics in results.items():
         score = metrics.get('final_score', 0.0)

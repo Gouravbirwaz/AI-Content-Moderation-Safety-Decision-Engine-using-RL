@@ -99,16 +99,17 @@ class ContentModerationEnv:
         return next_obs, reward, done, {"ground_truth": gt.model_dump(), "platform_risk": self.state_data.platform_risk_score}
 
     def _calculate_risk_delta(self, action: Action, gt: GroundTruth, user: UserHistory) -> float:
-        """Industry-standard risk engine. Calculates impact on platform safety."""
+        """Industry-standard multimodal risk engine. Penalizes missed visual/textual threats."""
         delta = 0.0
         
-        # Severe Risk: False Negatives (Missed violations)
+        # Critical Risk: False Negatives (Missed violations in either modality)
         if not (action.decision in [ModerationAction.REMOVE, ModerationAction.SHADOW_BAN, ModerationAction.WARN_USER]) and gt.is_violation:
             delta += 0.3
-            # Escalation: Repeat offenders post a systemic risk
+            # Systemic Risk: Visually hidden violations are more dangerous (adversarial)
+            if gt.has_visual_violation:
+                delta += 0.15
             if user.violations_count > 0:
                 delta += 0.2
-            # Critical Risk: Self-harm or severe Hate Speech
             if gt.label in ["Self-Harm", "Hate Speech"]:
                 delta += 0.2
                 
@@ -116,53 +117,53 @@ class ContentModerationEnv:
         elif action.decision in [ModerationAction.REMOVE, ModerationAction.SHADOW_BAN] and not gt.is_violation:
             delta += 0.1
             
-        # Risk Mitigation: Correct enforcement
+        # Mitigation Success: Correct enforcement
         elif (action.decision in [ModerationAction.REMOVE, ModerationAction.SHADOW_BAN] and gt.is_violation) or \
              (action.decision == ModerationAction.ALLOW and not gt.is_violation):
-            delta -= 0.2
+            delta -= 0.25 # Slightly higher mitigation credit for multimodal accuracy
         
         return delta
 
     def _calculate_reward(self, action: Action, gt: GroundTruth, user: UserHistory) -> Reward:
-        """Dense multi-factor reward function for high-fidelity reinforcement learning."""
+        """Multimodal reward function: rewards cross-modal reasoning and accuracy."""
         val = 0.0
         breakdown = {}
 
         decision = action.decision
         is_violation = gt.is_violation
+        has_visual = gt.has_visual_violation
 
-        # 1. Enforcement Accuracy (Primary Factor)
+        # 1. Enforcement Accuracy (Multimodal)
         if is_violation:
             if decision in [ModerationAction.REMOVE, ModerationAction.SHADOW_BAN]:
-                val += 1.5 # High reward for stopping violations
-                breakdown["enforcement_success"] = 1.5
+                val += 1.8 if has_visual else 1.5 # Bonus for catching visual violations
+                breakdown["enforcement_success"] = 1.8 if has_visual else 1.5
             elif decision == ModerationAction.WARN_USER:
-                val += 0.8 # Partial reward for warning
+                val += 0.8
                 breakdown["preventative_action"] = 0.8
             else:
-                val -= 2.0 # Severe penalty for missing a violation (FN)
-                breakdown["safety_failure_penalty"] = -2.0
+                val -= 2.5 if has_visual else 2.0 # Higher penalty for missing visual threats
+                breakdown["safety_failure_penalty"] = -2.5 if has_visual else -2.0
         else:
             if decision == ModerationAction.ALLOW:
-                val += 1.0 # Reward for correctly allowing safe content
+                val += 1.0 
                 breakdown["operational_efficiency"] = 1.0
             elif decision in [ModerationAction.REMOVE, ModerationAction.SHADOW_BAN]:
-                val -= 1.2 # Penalty for false positives (over-moderation)
+                val -= 1.2
                 breakdown["over_moderation_penalty"] = -1.2
         
-        # 2. Contextual reasoning bonus (Industry standard: Explainability)
+        # 2. Cross-Modal Reasoning Bonus
         reasoning = action.reasoning.lower()
-        if any(word in reasoning for word in ["history", "repeat", "violation", "past", "pattern"]):
+        if any(word in reasoning for word in ["image", "visual", "picture", "photo", "metadata"]):
+            val += 0.4
+            breakdown["visual_reasoning_bonus"] = 0.4
+            
+        if any(word in reasoning for word in ["history", "repeat", "violation", "pattern"]):
             val += 0.3
             breakdown["historical_context_bonus"] = 0.3
-            
-        if any(word in reasoning for word in ["risk", "platform", "safety", "standard"]):
-            val += 0.2
-            breakdown["risk_awareness_bonus"] = 0.2
 
-        # 3. Systemic Risk Penalty
-        # Penalty grows non-linearly with platform risk
-        risk_penalty = (self.state_data.platform_risk_score ** 2) * 0.2
+        # 3. Systemic Risk Drag
+        risk_penalty = (self.state_data.platform_risk_score ** 2) * 0.25
         val -= risk_penalty
         breakdown["systemic_risk_drag"] = -risk_penalty
 

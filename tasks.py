@@ -96,5 +96,18 @@ TASKS = [
         difficulty="MEDIUM",
         max_steps=10,
         description="The moderation policy becomes stricter halfway through. Adapt or fail."
+    ),
+    TaskDefinition(
+        name="Multimodal Adversarial Evasion",
+        difficulty="HARD",
+        max_steps=8,
+        description="Complex scenarios where safe text is paired with safety-violating imagery."
+    ),
+    TaskDefinition(
+        name="Visual Escalation Flow",
+        difficulty="MEDIUM",
+        max_steps=5,
+        is_sequential=True,
+        description="A user transitioning from safe textual posts to increasingly severe visual safety violations."
     )
 ]
