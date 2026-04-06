@@ -7,7 +7,7 @@ from google.genai import types
 from env.env import ContentModerationEnv
 from tasks.tasks import TASKS
 from env.models import Action, ModerationAction, Observation
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 # Configure industry-standard logging
 logging.basicConfig(
@@ -16,7 +16,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ModerationInference")
 
-load_dotenv()
+# Automatically find and load the .env file, even if it's in a subdirectory
+load_dotenv(find_dotenv())
 
 class ModerationClient:
     """Production-grade client for interacting with AI Multimodal Moderation services."""

@@ -10,7 +10,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Set environment variables (for Docker execution)
-ENV GEMINI_API_KEY=""
 ENV MODEL_NAME="gemini-2.5-flash"
 
 # Run the inference script by default
