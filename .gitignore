@@ -1,5 +1,5 @@
 .env
-assets/
 __pycache__/
 *.pyc
 .gemini/
+assets/
