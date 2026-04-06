@@ -29,5 +29,7 @@ dependencies:
   python: ">=3.9"
   pip:
     - pydantic>=2.0.0
-    - openai>=1.0.0
+    - google-generativeai
     - pyyaml
+    - Pillow
+    - python-dotenv
