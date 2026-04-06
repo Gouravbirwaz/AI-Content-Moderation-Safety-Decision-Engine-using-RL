@@ -2,9 +2,8 @@ import os
 import json
 import asyncio
 import logging
-import PIL.Image
-from typing import List, Dict, Optional, Any
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from env.env import ContentModerationEnv
 from tasks.tasks import TASKS
 from env.models import Action, ModerationAction, Observation
@@ -24,11 +23,14 @@ class ModerationClient:
     
     def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash"):
         if not api_key or api_key == "your-api-key":
-            raise EnvironmentError("GEMINI_API_KEY is not set or invalid.")
+            raise EnvironmentError(
+                "GEMINI_API_KEY is not set or invalid. "
+                "If running on Hugging Face Spaces, please add 'GEMINI_API_KEY' as a SECRET in the 'Settings' tab."
+            )
         
         self.api_key = api_key
         self.model_name = model_name
-        genai.configure(api_key=self.api_key)
+        self.client = genai.Client(api_key=self.api_key)
         
         self.system_prompt = """You are a senior AI Multimodal Moderation Architect. Your goal is to minimize platform risk by analyzing BOTH text and images.
 
@@ -48,11 +50,6 @@ Available Actions:
 Your 'reasoning' field MUST explicitly mention BOTH text and visual components if both are present.
 RESPONSE FORMAT: Valid JSON matching the Action schema.
 """
-        self.model = genai.GenerativeModel(
-            model_name=self.model_name,
-            system_instruction=self.system_prompt,
-            generation_config={"response_mime_type": "application/json"}
-        )
 
     async def get_decision(self, obs: Observation) -> Action:
         """Fetch a multimodal moderation decision using text and (optional) image inputs."""
@@ -74,15 +71,26 @@ RESPONSE FORMAT: Valid JSON matching the Action schema.
         
         if obs.image and os.path.exists(obs.image):
             try:
-                img = PIL.Image.open(obs.image)
-                content_parts.append(img)
+                with open(obs.image, "rb") as f:
+                    img_bytes = f.read()
+                
+                content_parts.append(
+                    types.Part.from_bytes(data=img_bytes, mime_type="image/png")
+                )
                 logger.info(f"Loaded image asset for analysis: {os.path.basename(obs.image)}")
             except Exception as e:
                 logger.warning(f"Failed to load image at {obs.image}: {e}. Falling back to text-only.")
 
         try:
-            # Multi-part content generation (text + optional image)
-            response = self.model.generate_content(content_parts)
+            # Multi-part content generation (text + optional image) using modern SDK
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=content_parts,
+                config=types.GenerateContentConfig(
+                    system_instruction=self.system_prompt,
+                    response_mime_type="application/json"
+                )
+            )
             decision_json = json.loads(response.text)
             return Action(**decision_json)
         except Exception as e:
