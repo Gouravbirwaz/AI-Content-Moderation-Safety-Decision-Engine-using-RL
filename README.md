@@ -1,3 +1,12 @@
+---
+title: AI Content Moderation Engine
+emoji: 🛡️
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
 # AI Multimodal Content Moderation & Safety Decision Engine
 
 [![OpenEnv](https://img.shields.io/badge/OpenEnv-Compatible-green.svg)](https://github.com/meta-research/openenv)

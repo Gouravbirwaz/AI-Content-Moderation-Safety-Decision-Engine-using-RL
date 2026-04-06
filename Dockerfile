@@ -14,4 +14,4 @@ ENV GEMINI_API_KEY=""
 ENV MODEL_NAME="gemini-2.5-flash"
 
 # Run the inference script by default
-CMD ["python", "inference.py"]
+CMD ["python", "-m", "agents.inference"]
