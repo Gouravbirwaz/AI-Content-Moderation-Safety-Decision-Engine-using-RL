@@ -1,7 +1,15 @@
 import os
+import sys
 import json
 import asyncio
 import logging
+from pathlib import Path
+
+# Add project root to sys.path to support direct execution and subdirectory execution
+PROJECT_ROOT = str(Path(__file__).parent.parent)
+if PROJECT_ROOT not in sys.path:
+    sys.path.append(PROJECT_ROOT)
+
 from google import genai
 from google.genai import types
 from env.env import ContentModerationEnv
@@ -30,7 +38,8 @@ class ModerationClient:
             )
         
         self.api_key = api_key
-        self.model_name = model_name
+        # Use fallback if model_name is empty or None
+        self.model_name = model_name if model_name else "gemini-2.5-flash"
         self.client = genai.Client(api_key=self.api_key)
         
         self.system_prompt = """You are a senior AI Multimodal Moderation Architect. Your goal is to minimize platform risk by analyzing BOTH text and images.
@@ -49,7 +58,9 @@ Available Actions:
 - SHADOW_BAN: Severe or persistent risks.
 
 Your 'reasoning' field MUST explicitly mention BOTH text and visual components if both are present.
-RESPONSE FORMAT: Valid JSON matching the Action schema.
+RESPONSE FORMAT: Valid JSON with the following keys:
+- "action": One of the Available Actions above.
+- "reasoning": Your comprehensive justification.
 """
 
     async def get_decision(self, obs: Observation) -> Action:
@@ -84,19 +95,41 @@ RESPONSE FORMAT: Valid JSON matching the Action schema.
 
         try:
             # Multi-part content generation (text + optional image) using modern SDK
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=content_parts,
-                config=types.GenerateContentConfig(
-                    system_instruction=self.system_prompt,
-                    response_mime_type="application/json"
-                )
-            )
-            decision_json = json.loads(response.text)
-            return Action(**decision_json)
+            retry_count = 0
+            max_retries = 3
+            backoff_base = 15 # Free tier is 5 RPM, so 15s is a good baseline
+            
+            while retry_count <= max_retries:
+                try:
+                    response = self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=content_parts,
+                        config=types.GenerateContentConfig(
+                            system_instruction=self.system_prompt,
+                            response_mime_type="application/json"
+                        )
+                    )
+                    decision_json = json.loads(response.text)
+                    return Action(**decision_json)
+                except Exception as e:
+                    err_msg = str(e)
+                    # Handle 429 (Quota), 503 (Overloaded), and SSL/Connection stutters
+                    retryable_errors = ["429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE", "SSL", "EOF", "RemoteDisconnected"]
+                    
+                    if any(err_pattern in err_msg for err_pattern in retryable_errors):
+                        retry_count += 1
+                        if retry_count > max_retries:
+                           raise e
+                        
+                        wait_time = backoff_base * (2 ** (retry_count - 1))
+                        logger.warning(f"Connection issue or rate limit ({err_msg[:50]}...). Waiting {wait_time}s before retry {retry_count}/{max_retries}...")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        raise e
+
         except Exception as e:
             logger.error(f"Moderation API failure: {str(e)}")
-            raise RuntimeError("Moderation service unavailable. Cannot proceed safely.")
+            raise RuntimeError(f"Moderation service unavailable: {str(e)}")
 
 async def run_simulation_task(task_def, client: ModerationClient):
     logger.info(f"Starting Task: {task_def.name}")
@@ -118,6 +151,9 @@ async def run_simulation_task(task_def, client: ModerationClient):
         if obs.image:
              logger.info(f"Visual Modal Attached: {os.path.basename(obs.image)}")
         
+        # Proactive spacing for free tier users (5 RPM)
+        await asyncio.sleep(2)
+        
         try:
             action = await client.get_decision(obs)
             next_obs, reward, done, info = env.step(action)
@@ -128,16 +164,21 @@ async def run_simulation_task(task_def, client: ModerationClient):
             logger.info(f"Decision: {action.decision} | Reward: {reward.value:.2f} | Global Risk: {info['platform_risk']:.2f}")
             obs = next_obs
         except Exception as e:
-            logger.critical(f"Simulation aborted: {e}")
-            return {"final_score": 0.0, "error": str(e)}
+            logger.warning(f"Task Interrupted by Rate Limit or Error: {e}")
+            logger.info(f"Falling back to partial scoring for {task_def.name}...")
+            # Break the step loop and score whatever we have
+            final_metrics = task_def.grader.score(actions, ground_truth_list, env.state())
+            final_metrics["interrupted"] = True
+            return final_metrics
 
     final_metrics = task_def.grader.score(actions, ground_truth_list, env.state())
+    final_metrics["interrupted"] = False
     logger.info(f"Task {task_def.name} Completed. Final Score: {final_metrics['final_score']:.2f}")
     return final_metrics
 
 async def main():
     api_key = os.getenv("GEMINI_API_KEY")
-    model_name = os.getenv("MODEL_NAME", "")
+    model_name = os.getenv("MODEL_NAME", "gemini-2.5-flash")
     
     try:
         client = ModerationClient(api_key, model_name)
@@ -155,7 +196,8 @@ async def main():
     print("="*60)
     for name, metrics in results.items():
         score = metrics.get('final_score', 0.0)
-        print(f"TASK: {name:35} | SCORE: {score:.2f}")
+        status_suffix = " (Partial - Rate Limit Hit)" if metrics.get("interrupted") else ""
+        print(f"TASK: {name:35} | SCORE: {score:.2f}{status_suffix}")
     print("="*60)
 
 if __name__ == "__main__":
