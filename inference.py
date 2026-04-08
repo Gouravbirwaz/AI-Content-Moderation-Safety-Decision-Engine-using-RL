@@ -3,15 +3,16 @@ import sys
 import json
 import asyncio
 import logging
+import base64
 from pathlib import Path
+from typing import Optional, List, Dict, Any
 
-# Add project root to sys.path to support direct execution and subdirectory execution
+# Ensure project root is in path
 PROJECT_ROOT = str(Path(__file__).parent)
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
-from google import genai
-from google.genai import types
+from openai import OpenAI
 from env.env import ContentModerationEnv
 from tasks.tasks import TASKS
 from env.models import Action, ModerationAction, Observation
@@ -24,49 +25,63 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ModerationInference")
 
-# Automatically find and load the .env file, even if it's in a subdirectory
 load_dotenv(find_dotenv())
 
+def encode_image(image_path: str) -> Optional[str]:
+    """Encodes an image to a base64 string."""
+    try:
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
+    except Exception as e:
+        logger.error(f"Error encoding image at {image_path}: {e}")
+        return None
+
 class ModerationClient:
-    """Production-grade client for interacting with AI Multimodal Moderation services."""
+    """OpenAI-compatible client for interacting with the hackathon LiteLLM proxy."""
     
-    def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash"):
-        if not api_key or api_key == "your-api-key":
-            logger.critical(
-                "GEMINI_API_KEY is not set or invalid. "
-                "Please add 'GEMINI_API_KEY' as a SECRET in the 'Settings' tab."
-            )
+    def __init__(self, api_key: str, base_url: Optional[str] = None):
+        # Validator injects API_KEY and API_BASE_URL
+        self.api_key = api_key or os.getenv("API_KEY")
+        self.base_url = base_url or os.getenv("API_BASE_URL")
+        self.model_name = os.getenv("MODEL_NAME", "gpt-4o") # Check hackathon docs for default model
+        
+        if not self.api_key:
+            logger.critical("API_KEY is not set. Submission will fail Phase 2 validation.")
             self.client = None
             return
-        
-        self.api_key = api_key
-        # Use fallback if model_name is empty or None
-        self.model_name = model_name if model_name else "gemini-2.5-flash"
-        self.client = genai.Client(api_key=self.api_key)
+
+        self.client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url
+        )
         
         self.system_prompt = """You are a senior AI Multimodal Moderation Architect. Your goal is to minimize platform risk by analyzing BOTH text and images.
 
 REASONING REQUIREMENTS:
-1. CROSS-MODAL ANALYSIS: Combine signals from text and images. Look for hidden threats (e.g. hate symbols in posters, safe text hiding malicious imagery).
+1. CROSS-MODAL ANALYSIS: Combine signals from text and images. Look for hidden threats.
 2. USER HISTORY: Review past violations. Escalate actions for repeat offenders.
 3. PLATFORM RISK: If risk is high, adopt a 'Safety First' posture.
 4. POLICY ADHERENCE: Strictly follow policy categories (Hate Speech, Harassment, etc.).
 
 Available Actions:
 - ALLOW: Safe content.
-- REMOVE: Clear policy violation (text or visual).
+- REMOVE: Clear policy violation.
 - FLAG_FOR_REVIEW: Ambiguous cases.
 - WARN_USER: Minor infractions.
 - SHADOW_BAN: Severe or persistent risks.
 
-Your 'reasoning' field MUST explicitly mention BOTH text and visual components if both are present.
-RESPONSE FORMAT: Valid JSON with the following keys:
-- "action": One of the Available Actions above.
-- "reasoning": Your comprehensive justification.
+RESPONSE FORMAT: You MUST return a valid JSON object with:
+{
+  "action": "One of the actions above",
+  "reasoning": "Comprehensive justification"
+}
 """
 
-    async def get_decision(self, obs: Observation) -> Action:
-        """Fetch a multimodal moderation decision using text and (optional) image inputs."""
+    async def get_decision(self, obs: Observation) -> Optional[Action]:
+        """Fetch a multimodal moderation decision using the OpenAI API format."""
+        if not self.client:
+            return None
+
         prompt_data = {
             "text_content": obs.content,
             "platform_context": {
@@ -77,66 +92,50 @@ RESPONSE FORMAT: Valid JSON with the following keys:
                 "user_id": obs.user_history.user_id,
                 "trust_score": obs.user_history.trust_score,
                 "violation_count": obs.user_history.violations_count
-            },
-            "applicable_rules": [r.model_dump() for r in obs.policy_rules]
+            }
         }
-        
-        content_parts = [json.dumps(prompt_data, indent=2)]
-        
+
+        # Prepare multimodal messages
+        content = [
+            {"type": "text", "text": f"Context: {json.dumps(prompt_data)}\n\nPlease analyze this post."}
+        ]
+
         if obs.image and os.path.exists(obs.image):
-            try:
-                with open(obs.image, "rb") as f:
-                    img_bytes = f.read()
-                
-                content_parts.append(
-                    types.Part.from_bytes(data=img_bytes, mime_type="image/png")
-                )
-                logger.info(f"Loaded image asset for analysis: {os.path.basename(obs.image)}")
-            except Exception as e:
-                logger.warning(f"Failed to load image at {obs.image}: {e}. Falling back to text-only.")
+            base64_image = encode_image(obs.image)
+            if base64_image:
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                })
+                logger.info(f"Visual Modal Attached: {os.path.basename(obs.image)}")
 
         try:
-            # Multi-part content generation (text + optional image) using modern SDK
-            retry_count = 0
-            max_retries = 3
-            backoff_base = 15 # Free tier is 5 RPM, so 15s is a good baseline
+            # Use run_in_executor to handle synchronous OpenAI call in async context
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[
+                        {"role": "system", "content": self.system_prompt},
+                        {"role": "user", "content": content}
+                    ],
+                    response_format={"type": "json_object"}
+                )
+            )
             
-            while retry_count <= max_retries:
-                try:
-                    response = self.client.models.generate_content(
-                        model=self.model_name,
-                        contents=content_parts,
-                        config=types.GenerateContentConfig(
-                            system_instruction=self.system_prompt,
-                            response_mime_type="application/json"
-                        )
-                    )
-                    decision_json = json.loads(response.text)
-                    return Action(**decision_json)
-                except Exception as e:
-                    err_msg = str(e) 
-                    # Handle 429 (Quota), 503 (Overloaded), and SSL/Connection stutters
-                    retryable_errors = ["429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE", "SSL", "EOF", "RemoteDisconnected"]
-                    
-                    if any(err_pattern in err_msg for err_pattern in retryable_errors):
-                        retry_count += 1
-                        if retry_count > max_retries:
-                           logger.error(f"Max retries reached for API: {err_msg}")
-                           return None
-                        
-                        wait_time = backoff_base * (2 ** (retry_count - 1))
-                        logger.warning(f"Connection issue or rate limit ({err_msg[:50]}...). Waiting {wait_time}s before retry {retry_count}/{max_retries}...")
-                        await asyncio.sleep(wait_time)
-                    else:
-                        logger.error(f"Non-retryable API error: {err_msg}")
-                        return None
+            decision_json = json.loads(response.choices[0].message.content)
+            # Normalize field name if LLM returns 'decision' instead of 'action'
+            if "decision" in decision_json and "action" not in decision_json:
+                decision_json["action"] = decision_json["decision"]
+                
+            return Action(**decision_json)
 
         except Exception as e:
             logger.error(f"Moderation API failure: {str(e)}")
             return None
 
 async def run_simulation_task(task_def, client: ModerationClient):
-    # Requirement: [START] task=NAME
     print(f"[START] task={task_def.name}", flush=True)
     logger.info(f"Starting Task: {task_def.name}")
     
@@ -155,50 +154,40 @@ async def run_simulation_task(task_def, client: ModerationClient):
     while not done:
         curr_step = len(actions) + 1
         logger.info(f"Processing Step {curr_step} | PostID: {obs.post_id}")
-        if obs.image:
-             logger.info(f"Visual Modal Attached: {os.path.basename(obs.image)}")
         
-        # Proactive spacing for free tier users (5 RPM)
-        await asyncio.sleep(2)
+        # Proactive spacing for free tier / rate limits
+        await asyncio.sleep(1)
         
         try:
             action = await client.get_decision(obs)
+            if action is None:
+                raise ValueError("API returned empty decision")
+                
             next_obs, reward, done, info = env.step(action)
             
             actions.append(action)
             ground_truth_list.append(env.state().ground_truth[obs.post_id])
             
-            # Requirement: [STEP] step=N reward=VAL
             print(f"[STEP] step={curr_step} reward={reward.value:.4f}", flush=True)
-            logger.info(f"Decision: {action.decision} | Reward: {reward.value:.2f} | Global Risk: {info['platform_risk']:.2f}")
+            logger.info(f"Decision: {action.action} | Reward: {reward.value:.2f} | Global Risk: {info['platform_risk']:.2f}")
             obs = next_obs
         except Exception as e:
-            logger.warning(f"Task Interrupted by Rate Limit or Error: {e}")
-            logger.info(f"Falling back to partial scoring for {task_def.name}...")
-            # Break the step loop and score whatever we have
+            logger.warning(f"Task Interrupted: {e}")
             final_metrics = task_def.grader.score(actions, ground_truth_list, env.state())
-            final_metrics["interrupted"] = True
-            # Requirement: [END] for interrupted tasks
             print(f"[END] task={task_def.name} score={final_metrics['final_score']:.4f} steps={len(actions)}", flush=True)
             return final_metrics
 
     final_metrics = task_def.grader.score(actions, ground_truth_list, env.state())
-    final_metrics["interrupted"] = False
-    
-    # Requirement: [END] task=NAME score=VAL steps=N
     print(f"[END] task={task_def.name} score={final_metrics['final_score']:.4f} steps={len(actions)}", flush=True)
     logger.info(f"Task {task_def.name} Completed. Final Score: {final_metrics['final_score']:.2f}")
     return final_metrics
 
 async def main():
-    api_key = os.getenv("GEMINI_API_KEY")
-    model_name = os.getenv("MODEL_NAME", "gemini-2.5-flash")
+    # Use standard environment variables expected by the LiteLLM proxy
+    api_key = os.getenv("API_KEY")
+    base_url = os.getenv("API_BASE_URL")
     
-    try:
-        client = ModerationClient(api_key, model_name)
-    except Exception as e:
-        logger.critical(f"System Initialization Failed: {e}")
-        return
+    client = ModerationClient(api_key, base_url)
 
     results = {}
     for task in TASKS:
@@ -210,7 +199,7 @@ async def main():
     print("="*60)
     for name, metrics in results.items():
         score = metrics.get('final_score', 0.0)
-        status_suffix = " (Partial - Rate Limit Hit)" if metrics.get("interrupted") else ""
+        status_suffix = " (Interrupted)" if metrics.get("interrupted") else ""
         print(f"TASK: {name:35} | SCORE: {score:.2f}{status_suffix}")
     print("="*60)
 
