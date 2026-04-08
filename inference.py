@@ -136,6 +136,8 @@ RESPONSE FORMAT: Valid JSON with the following keys:
             return None
 
 async def run_simulation_task(task_def, client: ModerationClient):
+    # Requirement: [START] task=NAME
+    print(f"[START] task={task_def.name}", flush=True)
     logger.info(f"Starting Task: {task_def.name}")
     
     env = ContentModerationEnv(
@@ -151,7 +153,8 @@ async def run_simulation_task(task_def, client: ModerationClient):
     ground_truth_list = []
     
     while not done:
-        logger.info(f"Processing Step {len(actions)+1} | PostID: {obs.post_id}")
+        curr_step = len(actions) + 1
+        logger.info(f"Processing Step {curr_step} | PostID: {obs.post_id}")
         if obs.image:
              logger.info(f"Visual Modal Attached: {os.path.basename(obs.image)}")
         
@@ -165,6 +168,8 @@ async def run_simulation_task(task_def, client: ModerationClient):
             actions.append(action)
             ground_truth_list.append(env.state().ground_truth[obs.post_id])
             
+            # Requirement: [STEP] step=N reward=VAL
+            print(f"[STEP] step={curr_step} reward={reward.value:.4f}", flush=True)
             logger.info(f"Decision: {action.decision} | Reward: {reward.value:.2f} | Global Risk: {info['platform_risk']:.2f}")
             obs = next_obs
         except Exception as e:
@@ -173,10 +178,15 @@ async def run_simulation_task(task_def, client: ModerationClient):
             # Break the step loop and score whatever we have
             final_metrics = task_def.grader.score(actions, ground_truth_list, env.state())
             final_metrics["interrupted"] = True
+            # Requirement: [END] for interrupted tasks
+            print(f"[END] task={task_def.name} score={final_metrics['final_score']:.4f} steps={len(actions)}", flush=True)
             return final_metrics
 
     final_metrics = task_def.grader.score(actions, ground_truth_list, env.state())
     final_metrics["interrupted"] = False
+    
+    # Requirement: [END] task=NAME score=VAL steps=N
+    print(f"[END] task={task_def.name} score={final_metrics['final_score']:.4f} steps={len(actions)}", flush=True)
     logger.info(f"Task {task_def.name} Completed. Final Score: {final_metrics['final_score']:.2f}")
     return final_metrics
 
