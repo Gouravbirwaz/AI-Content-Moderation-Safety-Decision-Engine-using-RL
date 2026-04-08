@@ -50,6 +50,9 @@ class ModerationClient:
             self.client = None
             return
 
+        logger.info(f"Targeting LLM Proxy: {self.base_url}")
+        logger.info(f"API Key present: {str(self.api_key)[:4]}...{str(self.api_key)[-4:] if len(str(self.api_key)) > 4 else ''}")
+
         self.client = OpenAI(
             api_key=self.api_key,
             base_url=self.base_url

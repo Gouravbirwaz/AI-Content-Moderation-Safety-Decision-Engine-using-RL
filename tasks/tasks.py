@@ -10,7 +10,16 @@ class TaskGrader(ABC):
 class MultiDimensionalGrader(TaskGrader):
     def score(self, actions: List[Action], ground_truth_list: List[GroundTruth], final_state: State) -> Dict[str, float]:
         if not actions:
-            return {"final_score": 0.0}
+            return {
+                "final_score": 0.0001,
+                "precision": 0.0001,
+                "recall": 0.0001,
+                "f1_score": 0.0001,
+                "accuracy": 0.0001,
+                "visual_recall": 0.0001,
+                "risk_mitigation": 0.0001,
+                "policy_alignment": 0.0001
+            }
         
         total_items = len(ground_truth_list)
         
