@@ -73,14 +73,17 @@ class MultiDimensionalGrader(TaskGrader):
         # Weighted Industry Score (Multimodal Adjusted)
         final_score = (f1_score * 0.3) + (visual_recall * 0.1) + (risk_mitigation * 0.3) + (policy_score * 0.2) + (accuracy * 0.1)
         
+        # Ensure score is strictly between 0 and 1 (Scaler Validator Requirement)
+        final_score = max(0.0001, min(0.9999, final_score))
+        
         return {
-            "precision": precision,
-            "recall": recall,
-            "f1_score": f1_score,
-            "visual_recall": visual_recall,
-            "accuracy": accuracy,
-            "risk_mitigation": risk_mitigation,
-            "policy_alignment": policy_score,
+            "precision": max(0.0001, min(0.9999, precision)),
+            "recall": max(0.0001, min(0.9999, recall)),
+            "f1_score": max(0.0001, min(0.9999, f1_score)),
+            "visual_recall": max(0.0001, min(0.9999, visual_recall)),
+            "accuracy": max(0.0001, min(0.9999, accuracy)),
+            "risk_mitigation": max(0.0001, min(0.9999, risk_mitigation)),
+            "policy_alignment": max(0.0001, min(0.9999, policy_score)),
             "final_score": final_score
         }
 
