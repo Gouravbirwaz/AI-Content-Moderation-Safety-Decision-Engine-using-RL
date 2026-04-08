@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 
 # Add project root to sys.path to support direct execution and subdirectory execution
-PROJECT_ROOT = str(Path(__file__).parent.parent)
+PROJECT_ROOT = str(Path(__file__).parent)
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
@@ -114,7 +114,7 @@ RESPONSE FORMAT: Valid JSON with the following keys:
                     decision_json = json.loads(response.text)
                     return Action(**decision_json)
                 except Exception as e:
-                    err_msg = str(e)
+                    err_msg = str(e) 
                     # Handle 429 (Quota), 503 (Overloaded), and SSL/Connection stutters
                     retryable_errors = ["429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE", "SSL", "EOF", "RemoteDisconnected"]
                     

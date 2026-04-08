@@ -37,8 +37,12 @@ class Observation(BaseModel):
     policy_version: str = "1.0" # Current policy regime
 
 class Action(BaseModel):
-    decision: ModerationAction
+    decision: ModerationAction = Field(..., alias="action")
     reasoning: str = Field(..., description="Justification for the moderation decision")
+    
+    model_config = {
+        "populate_by_name": True
+    }
 
 class Reward(BaseModel):
     value: float

@@ -2,15 +2,19 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install uv for fast, deterministic builds
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Install dependencies using uv.lock
+COPY pyproject.toml uv.lock ./
+RUN uv pip install --system --no-cache .
 
 # Copy application files
 COPY . .
 
-# Set environment variables (for Docker execution)
+# Set environment variables
 ENV MODEL_NAME="gemini-2.5-flash"
 
-# Run the inference script by default
-CMD ["python", "-m", "agents.inference"]
+# Run the FastAPI server on port 8000 using the console script
+EXPOSE 8000
+CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]

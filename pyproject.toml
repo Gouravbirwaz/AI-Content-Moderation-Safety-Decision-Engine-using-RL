@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-content-moderation-engine"
+version = "1.1.0"
+description = "A production-grade content moderation simulation for Meta-scale challenges."
+authors = [
+    { name = "Gourav Birwaz" }
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0.0",
+    "google-genai",
+    "pyyaml",
+    "Pillow",
+    "python-dotenv",
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+    "openenv-core>=0.2.0"
+]
+
+[project.scripts]
+server = "server.app:main"
+
+[project.urls]
+Homepage = "https://huggingface.co/spaces/gouravbirwaz/ai_moderation_engine"

@@ -126,7 +126,7 @@ class ContentModerationEnv:
         return delta
 
     def _calculate_reward(self, action: Action, gt: GroundTruth, user: UserHistory) -> Reward:
-        """Multimodal reward function: rewards cross-modal reasoning and accuracy."""
+        """Normalized multimodal reward function [0.0, 1.0]."""
         val = 0.0
         breakdown = {}
 
@@ -134,39 +134,50 @@ class ContentModerationEnv:
         is_violation = gt.is_violation
         has_visual = gt.has_visual_violation
 
-        # 1. Enforcement Accuracy (Multimodal)
+        # 1. Enforcement Accuracy (0.0 to 0.8)
         if is_violation:
             if decision in [ModerationAction.REMOVE, ModerationAction.SHADOW_BAN]:
-                val += 1.8 if has_visual else 1.5 # Bonus for catching visual violations
-                breakdown["enforcement_success"] = 1.8 if has_visual else 1.5
+                # Baseline success: 0.7 + visual catch bonus 0.1
+                base = 0.7 + (0.1 if has_visual else 0.0)
+                val += base
+                breakdown["enforcement_accuracy"] = base
             elif decision == ModerationAction.WARN_USER:
-                val += 0.8
-                breakdown["preventative_action"] = 0.8
+                val += 0.4
+                breakdown["enforcement_accuracy"] = 0.4
             else:
-                val -= 2.5 if has_visual else 2.0 # Higher penalty for missing visual threats
-                breakdown["safety_failure_penalty"] = -2.5 if has_visual else -2.0
+                # Failure case: 0.0
+                val += 0.0
+                breakdown["enforcement_failure_penalty"] = 0.0
         else:
             if decision == ModerationAction.ALLOW:
-                val += 1.0 
-                breakdown["operational_efficiency"] = 1.0
+                val += 0.75
+                breakdown["enforcement_accuracy"] = 0.75
             elif decision in [ModerationAction.REMOVE, ModerationAction.SHADOW_BAN]:
-                val -= 1.2
-                breakdown["over_moderation_penalty"] = -1.2
+                # Over-moderation: 0.1
+                val += 0.1
+                breakdown["over_moderation_penalty"] = 0.1
         
-        # 2. Cross-Modal Reasoning Bonus
+        # 2. Cross-Modal Reasoning Bonus (Up to +0.1)
         reasoning = action.reasoning.lower()
+        reasoning_bonus = 0.0
         if any(word in reasoning for word in ["image", "visual", "picture", "photo", "metadata"]):
-            val += 0.4
-            breakdown["visual_reasoning_bonus"] = 0.4
+            reasoning_bonus += 0.05
+            breakdown["visual_reasoning_bonus"] = 0.05
             
         if any(word in reasoning for word in ["history", "repeat", "violation", "pattern"]):
-            val += 0.3
-            breakdown["historical_context_bonus"] = 0.3
+            reasoning_bonus += 0.05
+            breakdown["historical_context_bonus"] = 0.05
+        
+        val += reasoning_bonus
 
-        # 3. Systemic Risk Drag
-        risk_penalty = (self.state_data.platform_risk_score ** 2) * 0.25
+        # 3. Systemic Risk Drag (Max -0.15)
+        # Penalizes high risk environments to encourage safety-first
+        risk_penalty = min(0.15, (self.state_data.platform_risk_score ** 2) * 0.05)
         val -= risk_penalty
         breakdown["systemic_risk_drag"] = -risk_penalty
+
+        # final clamp to 0.0-1.0
+        val = max(0.0, min(1.0, val))
 
         return Reward(value=val, breakdown=breakdown)
 

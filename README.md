@@ -72,6 +72,9 @@ Create a `.env` file or export your keys:
 export GEMINI_API_KEY="your_api_key_here"
 ```
 
+> [!NOTE]
+> **Why Gemini?** As students, we've selected the **Gemini API** for this project because it provides a powerful, multi-modal free tier that is more accessible than the OpenAI/ChatGPT API costs, while still delivering state-of-the-art performance for safety reasoning.
+
 ### Run Evaluation
 Execute the inference client to test the engine across all defined safety tasks:
 ```bash
