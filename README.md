@@ -11,82 +11,65 @@ pinned: false
 
 [![OpenEnv](https://img.shields.io/badge/OpenEnv-Compatible-green.svg)](https://github.com/meta-research/openenv)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/release/python-390/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-## 1. Introduction & Summary
-The **AI Multimodal Content Moderation Engine** is a state-of-the-art safety simulation designed for Meta-scale challenges. Built on the **Meta OpenEnv** framework, it provides a realistic, high-stakes environment for training and evaluating safety agents. The engine specifically addresses the "Safety Decision" theme of the Meta-PyTorch Hackathon by integrating complex text-image reasoning, dynamic platform risk management, and adversarial evasion detection.
+## 1. Introduction
+The **AI Multimodal Content Moderation Engine** is a production-grade safety simulation built on the **Meta OpenEnv** framework. Designed for the Meta-PyTorch Hackathon, it evaluates AI agents on their ability to manage complex moderation scenarios involving text-image interplay, dynamic policy shifts, and evolving platform risk.
 
-## 2. Problem Statement
-Modern social platforms face sophisticated safety threats where malicious content is often hidden across multiple modalities. A common "Mismatched Signal" attack involves pairing a seemingly safe text description with a policy-violating image (memes, obfuscated symbols). traditional moderation systems often fail these cases due to:
-- **Lack of Cross-Modal Reasoning**: Analyzing text and images in isolation.
-- **Static Policy Failure**: Inability to adapt when platform risk spikes or policies shift.
-- **Adversarial Evasion**: Users using leetspeak or visual obfuscation to bypass filters.
+## 2. Technical Architecture
 
-## 3. Proposed Solution
-Our engine uses **Reinforcement Learning (RL)** principles and **Large Multimodal Models (LMMs)** to create a holistic safety gate. By modeling moderation as an OpenEnv session, we allow agents to:
-- **Analyze Joint Embeddings**: Evaluate the interaction between text and visual signals.
-- **Track User Trust**: Maintain persistent historical context to identify repeat offenders.
-- **Manage Systemic Risk**: Dynamically adjust moderation strictness based on the platform's global risk score.
+### 🛡️ Moderation Engine (Environment)
+The core environment is served via **FastAPI** (`server/app.py`), providing an industry-standard OpenEnv API. It maintains a global risk state and simulates realistic user history and policy fluctuations.
+- **Port**: 8000
+- **Endpoints**: `/reset`, `/step`, `/health`, `/state`
 
-## 4. Key Features
-- 🛡️ **Cross-Modal Reasoning**: Detects violations where the threat exists only in the interplay of text and image.
-- 📈 **Multi-Dimensional Grading**: Scores agents on Precision, Recall, Visual Recall, and Risk Mitigation.
-- 🔄 **Dynamic Policy Shifts**: Simulates real-world "breaking news" or "election" scenarios where safety thresholds change mid-session.
-- 🕵️ **Adversarial Data Engine**: Generates synthetic content including leetspeak, obfuscated text, and deceptive visual memes.
+### 🧠 Inference Engine (Agent)
+The inference client (`inference.py`) is designed for **full compliance with the hackathon's LiteLLM proxy**. 
+- **SDK**: `openai` (used as a bridge for multi-provider support).
+- **Multimodal**: Implements **Base64 image encoding** to send visual assets from the `assets/` directory to the LMM.
+- **Resilience**: Features automated retry logic and exponential backoff to handle rate limits and proxy stutters.
 
-## 5. Tech Stack
-- **Framework**: [Meta OpenEnv](https://github.com/meta-research/openenv)
-- **Deep Learning**: PyTorch
-- **Multimodal AI**: Gemini 2.5 Flash (Large Multimodal Model)
-- **Data Modeling**: Pydantic v2
-- **Environment**: Gymnasium-compliant API
+## 3. Key Safety Features
+- **Cross-Modal Reasoning**: Detects threats where the violation exists only in the *interaction* between text and image (e.g., safe text paired with a deceptive meme).
+- **Dynamic Policy Shifts**: Scenarios where the moderation guidelines become stricter halfway through (e.g., during "Breaking News" events).
+- **Global Risk Mitigation**: Agents must lower the platform's aggregate risk score to achieve high performance.
+
+## 4. Build System & Optimization
+- **Package Manager**: Uses `uv` for lightning-fast, deterministic dependency resolution.
+- **Lockfile**: Fully reproducible environment via `uv.lock`.
+- **Infrastructure**: Configured with a multi-stage `Dockerfile` for high-performance deployment on Hugging Face Spaces.
+
+## 5. Grading & Evaluation
+The engine uses a **Multi-Dimensional Grader** that outputs scores strictly within the **(0, 1)** range to satisfy validator requirements:
+- **Precision & Recall (30%)**: Standard classification accuracy.
+- **Visual Recall (10%)**: Specifically rewards catching visual modal violations.
+- **Risk Mitigation (30%)**: Measures the reduction in the platform's global hazard score.
+- **Policy Alignment (20%)**: Measures adherence to shifting guidelines.
+- **Base Accuracy (10%)**: Overall decision correctness.
 
 ## 6. Project Structure
-The project follows the standardized OpenEnv/Hackathon directory pattern:
 ```text
 .
-├── agents/             # Inference clients and Decision Models
-│   └── inference.py    # Main evaluation entry point
-├── env/                # Core Environment Implementation
-│   ├── env.py          # Observation/Action/Reward logic
-│   └── models.py       # Pydantic data schemas
-├── tasks/              # Scenario Definitions
-│   └── tasks.py        # Task configurations and Grader logic
-├── data_engine/        # Content Generation
-│   └── data_engine.py  # Synthetic Adversarial Generator
-├── assets/             # (Ignored) Dynamically generated visual assets
-├── openenv.yaml        # OpenEnv Environment Manifest
-└── Dockerfile          # Containerized deployment
+├── server/             # FastAPI Environment Server
+├── agents/             # Placeholder for custom agents
+├── env/                # Core Observation/Action/Model definitions
+├── tasks/              # Scenario Definitions & Evaluation Logic
+├── assets/             # Restored Visual Placeholder Assets
+├── data_engine/        # Adversarial Content Generator
+├── inference.py        # Main Submission & Entry Point
+├── pyproject.toml      # Modern Python Project Metadata
+└── Dockerfile          # Production Container config
 ```
 
-## 7. How to Run
+## 7. Configuration
+The system expects the following environment variables (injected by the hackathon proxy):
+- `API_KEY`: Your LiteLLM/OpenAI compatible key.
+- `API_BASE_URL`: The proxy endpoint provided by the organizers.
+- `MODEL_NAME`: Defaults to `gpt-4o` (or as configured in the proxy).
 
-### Installation
-```bash
-pip install -r requirements.txt
-```
-
-### Setup API Keys
-Create a `.env` file or export your keys:
-```bash
-export GEMINI_API_KEY="your_api_key_here"
-```
-
-> [!NOTE]
-> **Why Gemini?** As students, we've selected the **Gemini API** for this project because it provides a powerful, multi-modal free tier that is more accessible than the OpenAI/ChatGPT API costs, while still delivering state-of-the-art performance for safety reasoning.
-
-### Run Evaluation
-Execute the inference client to test the engine across all defined safety tasks:
-```bash
-python -m agents.inference
-```
-
-## 8. Grading & Evaluation
-The engine uses a **Multi-Dimensional Grader** to provide a holistic safety score:
-- **Safety Recall (40%)**: Ability to catch all policy violations.
-- **Visual Accuracy (20%)**: Specifically rewards catching visual-only threats.
-- **Risk Mitigation (25%)**: Measures how effectively the agent lowers the platform risk score.
-- **Policy Alignment (15%)**: Strictness during high-risk scenarios.
+---
+*Developed for the Meta-PyTorch Hackathon in partnership with Scaler School of Technology.*
+rios.
 
 ---
 *Developed for the Meta-PyTorch Hackathon in partnership with Scaler School of Technology.*
